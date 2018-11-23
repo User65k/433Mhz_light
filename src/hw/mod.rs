@@ -4,8 +4,13 @@ use ::std::time::{SystemTime, Duration, UNIX_EPOCH};
 use ::std::thread::sleep;
 use std::sync::{Mutex, Arc};
 
+mod alsa;
+
+mod home_wizard;
+mod rcswitch;
+
 // The GPIO module uses BCM pin numbering. BCM GPIO 18 is tied to physical pin 12.
-const GPIO_SOUND_ON: u8 = 18;
+const GPIO_SOUND_ON: u8 = 22;
 const GPIO_433_IN: u8 = 27;
 const GPIO_433_OUT: u8 = 24;
 
@@ -14,13 +19,6 @@ pub fn setup() -> LampStatus<'static> {
     gpio.set_mode(GPIO_SOUND_ON, Mode::Output);
     gpio.set_mode(GPIO_433_OUT, Mode::Output);
     gpio.set_mode(GPIO_433_IN, Mode::Input);
-
-    //DEMO HW
-    gpio.set_mode (17, Mode::Input );
-    gpio.set_mode (22, Mode::Output );
-    gpio.set_mode (23, Mode::Output );
-    gpio.write (22, Level::High) ;
-    gpio.write (23, Level::High) ;
 
     // Blink an LED attached to the pin on and off
     //gpio.write(GPIO_SOUND_ON, Level::High);
@@ -57,11 +55,12 @@ pub fn setup() -> LampStatus<'static> {
         }
     }).expect("could not set interrupt");
 
+    let gpio = Arc::new(Mutex::new(gpio));
+    alsa::show_play_stat_on_pin(gpio.clone(), GPIO_SOUND_ON);
+
     LampStatus::new(gpio)
 }
 
-mod home_wizard;
-mod rcswitch;
 pub struct LampStatus<'a> {
     bright: u8,
     red: u8,
@@ -69,7 +68,7 @@ pub struct LampStatus<'a> {
     con: rcswitch::Transmitter<'a>,
 }
 impl<'a> LampStatus<'a> {
-    fn new(gpios : Gpio) -> LampStatus<'a> {
+    fn new(gpios : Arc<Mutex<Gpio>>) -> LampStatus<'a> {
         let mut lamp = LampStatus {
             bright:15,
             red:0,
@@ -134,6 +133,6 @@ impl<'a> LampStatus<'a> {
     fn send(&mut self, cmd: u32) {
         let code = 14434000+cmd;
         self.con.send(code, 24);
-        sleep(Duration::from_micros(50));
+        sleep(Duration::from_micros(100));
     }
 }

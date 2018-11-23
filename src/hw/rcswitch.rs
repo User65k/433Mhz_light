@@ -6,6 +6,7 @@
 use ::std::thread::sleep;
 use ::std::time::Duration;
 use super::{Gpio,Level};
+use std::sync::{Mutex, Arc};
 
 struct HighLow {
     high: u8,
@@ -107,11 +108,11 @@ pub struct Transmitter<'a> {
     protocol: &'a Protocol,
     repeat_count: u8,
     pin: u8,
-    gpio: Gpio,
+    gpio: Arc<Mutex<Gpio>>,
 }
 
 impl<'a> Transmitter<'a> {
-    pub fn new(proto: usize, pin: u8, repeat_count: u8, gpio: Gpio) -> Transmitter<'a> {
+    pub fn new(proto: usize, pin: u8, repeat_count: u8, gpio: Arc<Mutex<Gpio>>) -> Transmitter<'a> {
         Transmitter {
             protocol: &PROTO[proto],
             repeat_count,
@@ -140,10 +141,10 @@ impl<'a> Transmitter<'a> {
         //TODO enable receiver again if we just disabled it
     }
     fn transmit(&self, pulse: &HighLow) {
-
-        self.gpio.write(self.pin, Level::High);
+        let gpio = self.gpio.lock().unwrap();
+        gpio.write(self.pin, Level::High);
         sleep(Duration::from_micros(self.protocol.pulse_length as u64 * pulse.high as u64));
-        self.gpio.write(self.pin, Level::Low);
+        gpio.write(self.pin, Level::Low);
         sleep(Duration::from_micros( self.protocol.pulse_length as u64 * pulse.low as u64));
     }
 }
