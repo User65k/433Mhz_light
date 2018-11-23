@@ -12,7 +12,6 @@ extern crate glob;
 use self::glob::glob;
 
 fn is_playing() -> bool {
-    let mut plays = false;
     for filename in glob("/proc/asound/card*/pcm*/sub*/status").expect("Failed to read glob pattern") {
         if let Ok(filename) = filename {
             if let Ok(mut f) = fs::File::open(filename) {
@@ -20,14 +19,13 @@ fn is_playing() -> bool {
                 if f.read_to_string(&mut contents).is_ok()
                 {
                     if contents.contains("RUNNING") {
-                        plays = true;
-                        break;
+                        return true;
                     }
                 }
             }
         }
     }
-    plays
+    false
 }
 
 pub fn show_play_stat_on_pin(gpio: Arc<Mutex<Gpio>>, pin: u8) {
@@ -38,7 +36,7 @@ pub fn show_play_stat_on_pin(gpio: Arc<Mutex<Gpio>>, pin: u8) {
             let state = is_playing();
             if state != last_state {
                 last_state = state;
-                let gpio = gpio.lock().unwrap();
+                let gpio = gpio.lock().expect("gpios locked");
                 if state {
                     gpio.write(pin, Level::High);
                 }else{
