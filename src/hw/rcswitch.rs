@@ -141,7 +141,7 @@ impl<'a> Transmitter<'a> {
         //TODO enable receiver again if we just disabled it
     }
     fn transmit(&self, pulse: &HighLow) {
-        let gpio = self.gpio.lock().unwrap();
+        let gpio = self.gpio.lock().expect("gpios locked");
         gpio.write(self.pin, Level::High);
         sleep(Duration::from_micros(self.protocol.pulse_length as u64 * pulse.high as u64));
         gpio.write(self.pin, Level::Low);

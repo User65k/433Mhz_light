@@ -1,129 +1,88 @@
+extern crate mio;
+
 mod hw;
 mod server;
-use ::std::net::TcpListener;
+use mio::{Poll, PollOpt, Ready, Events, Token};
+use mio::net::TcpListener;
 
 fn main() {
-    let mut lamp = hw::setup();
-    //server::serve();
-    let listener = TcpListener::bind("0.0.0.0:1337").expect("could not get port 1337");
-    for stream in listener.incoming() {
-        if let Ok(byte) = server::get_byte_from_stream(stream) {
-            let br = (byte & 0xF0)>>4;
-            if br==0 {
-                lamp.switch(false);
-            }else{
-                lamp.set_red(byte & 0xF);
-                lamp.dim_to(br - 1);
-                lamp.switch(true);
+    let (mut lamp, erg) = hw::setup();
+
+    // Setup some tokens to allow us to identify which event is
+    // for which socket.
+    const SERVER: Token = Token(0);
+    const MHZ433: Token = Token(1);
+
+    let addr = "0.0.0.0:1337".parse().unwrap();
+    // Setup the server socket
+    let server = TcpListener::bind(&addr).expect("could not get port 1337");
+
+    // Create a poll instance
+    let poll = Poll::new().unwrap();
+
+    // Start listening for incoming connections
+    poll.register(&server, SERVER, Ready::readable(), PollOpt::edge()).expect("register listener");
+
+    poll.register(&lamp, MHZ433, Ready::readable(), PollOpt::edge()).expect("register 433");
+
+    // Create storage for events
+    let mut events = Events::with_capacity(1024);
+
+    loop {
+        poll.poll(&mut events, None).unwrap();
+
+        for event in events.iter() {
+            match event.token() {
+                SERVER => {
+                    let stream = server.accept_std();
+                    if let Ok(byte) = server::get_byte_from_stream(stream) {
+                        let br = (byte & 0xF0)>>4;
+                        if br==0 {
+                            lamp.switch(false);
+                        }else{
+                            lamp.set_red(byte & 0xF);
+                            lamp.dim_to(br - 1);
+                            lamp.switch(true);
+                        }
+                    }
+
+                }
+                MHZ433 => {
+                    let n_received_value = erg.lock().expect("recv buffer locked");
+                    match *n_received_value {
+                        3314352130 => { //Schalter aus
+                            if lamp.is_on() {
+                                println!("-> Aus");
+                                lamp.switch(false);
+                            }else{
+                                println!("-> Dunkel Rot");
+                                lamp.set_red(15);
+                                lamp.dim_to(0);
+                                lamp.switch(true);
+                            }
+                        },
+                        3314352146 => { //Schalter an
+                            if lamp.is_on() {
+                                lamp.dim_to(15);
+                                println!("-> Vollgas");
+                            }else{
+                                println!("-> Dunkelisch");
+                                lamp.set_red(0);
+                                lamp.dim_to(4);
+                                lamp.switch(true);
+                            }
+                        },
+                        14434000...14434999 => { //lampe
+                            lamp.update_rf(*n_received_value);
+                        },
+                        _ => {
+                            //jibberish
+                            println!("got {}",n_received_value);
+                        },
+                    }
+                }
+                _ => unreachable!(),
             }
         }
     }
 }
-
-
-/*
-
-    let lt = 0
-    loop {
-        ready = select.select([sck],[],[])[0] # proc.stdout
-
-        if sck in ready:
-            val = None
-            try:
-                dsck, peer = sck.accept()
-                val = dsck.recv(1)
-                if val:
-                    val = val[0]
-                dsck.close()
-            except Exception:
-                pass
-
-            if val==None:
-                continue
-
-            br = (val & 0xF0)>>4
-            if br==0:
-                lamp.switch(False)
-            else:
-                lamp.setRed(val & 0xF)
-                br -= 1
-                lamp.dimTo(br)
-                lamp.switch(True)
-        
-            continue
-
-        line = proc.stdout.readline()
-        
-        ts = time()
-        dur = ts - lt
-        if line == '':
-            break
-
-        number = line.rstrip().decode("ascii")
-
-        #print(number)
-
-        if ( dur < 0.1 ):
-            #print("repeat")
-            continue
-
-        if number[:5]=="14434":
-            #Lampe
-            code = number[5:]
-
-            if code=="611": # Aus
-                lamp.on = False
-                print("Aus")
-            elif code=="755": # An
-                lamp.on = True
-                print("An")
-            elif code=="800": # Warm
-                lamp.red += 1
-                lamp.bright += 1
-                print("Warm")
-                print(lamp.red)
-            elif code=="608": # Cold
-                lamp.red -= 1
-                lamp.bright += 1
-                print("Kalt")
-            elif code=="620": # Dunkler
-                lamp.bright -= 1
-                print("Dunkel")
-            elif code=="572": # Heller
-                lamp.bright += 1
-                print("Hell")
-                print(lamp.bright)
-
-        elif number[:8]=="33143521":
-            #Schalter
-            code = number[8:]
-
-            if code=="30": # Aus
-                print("Aus!")
-                if lamp.on:
-                    print("-> Aus")
-                    lamp.switch(False)
-                else:
-                    print("-> Dunkel Rot")
-                    lamp.setRed(15)
-                    lamp.dimTo(0)
-                    lamp.switch(True)
-
-            elif code=="46": # An
-                print("An!")
-                if lamp.on:
-                    lamp.dimTo(15)
-                    print("-> Vollgas")
-                else:
-                    print("-> Dunkelisch")
-                    lamp.setRed(0)
-                    lamp.dimTo(4)
-                    lamp.switch(True)
-
-        else:
-            continue # dont coinsider for timing stuff
-
-        lt = ts
-
-    }
-*/

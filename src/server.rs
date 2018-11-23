@@ -1,4 +1,4 @@
-use ::std::net::{TcpListener,TcpStream};
+use ::std::net::{TcpListener,TcpStream,SocketAddr};
 use std::io::{Read,Error,ErrorKind};
 
 /*pub fn serve() {
@@ -10,9 +10,9 @@ use std::io::{Read,Error,ErrorKind};
     }
 }*/
 
-pub fn get_byte_from_stream(stream: Result<TcpStream,Error>) -> Result<u8, Error> {
+pub fn get_byte_from_stream(stream: Result<(TcpStream,SocketAddr),Error>) -> Result<u8, Error> {
     match stream {
-        Ok(stream) => {
+        Ok((stream,_)) => {
             for byte in stream.bytes() {
                 let byte = byte?;
                 return Ok(byte);
